@@ -1,26 +1,33 @@
 # HackTrack Pro
 
-A responsive Next.js dashboard that reads Google Sheets on the server. The configured spreadsheet is **Hackathon Tracker — 10 Web & AI Opportunities — Oct 2026** (`(configured in the ignored local .env.local file)`). The spreadsheet ID is set locally in `.env.local`; that file is ignored by Git. No API key or service account credential is stored in source control or client code.
+A responsive Next.js dashboard that discovers hackathons directly from public event feeds. The default feeds need no login or credentials.
 
-## Google Sheets access
+## Discovery sources and freshness
 
-The connected Google Drive account has read access to the sheet. The app server needs its own Google Sheets API credential:
+### Brabble.ai RSS (default, no key)
 
-- For a sheet readable by anyone with the link, provide a Google API key in `GOOGLE_SHEETS_API_KEY` (kept only in `.env.local`).
-- For a private sheet, create a Google service account, share the sheet with its email as a Viewer, and set `GOOGLE_SERVICE_ACCOUNT_EMAIL` and `GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY` in `.env.local`. Store the private key with newlines escaped as `\\n`.
+The app reads the documented public feed at `https://brabble.ai/rss/hackathons.xml`. I verified it returns HTTP 200 without credentials and publishes hackathons aggregated from multiple platforms, including Indian listings. The live response contained 100 items, so treat the no-key feed as a partial catalogue. Its feed description says it is refreshed daily; the RSS response advertises a one-hour HTTP cache. The app caches the RSS response for one hour and displays the feed's `lastBuildDate`.
 
-Copy `.env.example` only if you need a template; preserve the existing spreadsheet ID. Without one of the credentials above the site shows the connected-sheet credential message and a safe empty state.
+RSS entries link to Brabble listing pages, which in turn direct applicants to organizers. The app labels those links “Open listing.” Reuse requires credit and a link to Brabble.ai; attribution is shown in the dashboard.
 
-## Data tabs and headers
+### Brabble listings API (optional, richer fields)
 
-The current spreadsheet contains `Hackathon Tracker`, `ScamShield AI Plan`, `Cash Prize Hackathons`, and `Physical Goodies`. The hackathon tabs use headers including `Hackathon`, `Official link`, `Mode`, `Deadline / dates (2026)`, `Solo eligibility`, `Fee`, `Prize / reward`, `Project / theme`, `Registration status`, `My status`, `Cash / entry summary`, and `Goodies / swag details`. The app maps values by header text and retains unknown columns as source fields.
+Set `BRABBLE_API_KEY` in `.env.local` to use Brabble's structured `/api/listings` endpoint instead of RSS. The current developer documentation requires authentication, and I verified that the live endpoint returns HTTP 401 without a key, despite a stale FAQ statement that says it is keyless. Create a free key in Brabble Developer settings. The key remains server-side. The API gives eligibility, team range, prize labels, and organizer URLs when available. Responses are cached for 60 minutes; Brabble says its underlying snapshot refreshes hourly and the data can change about once a day. Its reuse terms require attribution and say not to present the whole dataset as independently assembled. The app links to Brabble and sends registration traffic to organizer URLs when the API is enabled.
 
-The cash page requires numeric prize data explicitly described as cash in the prize value or a separate cash summary. Rows marked with in-kind/uncertain prizes and no explicit cash amount are omitted. Goodies are sourced from the dedicated goodies tab and physical-goods details in the tracker. ScamShield renders its sheet rows and values directly; absent fields are not filled with invented plan details.
+### Hackalendar (no key required)
 
-The app refreshes the four tabs every 60 seconds and on browser focus, de-duplicates records by name within each tab, and shows its last sync time. Sheet data is untrusted content and is displayed as data only.
+The app also reads `https://hackalendar.com/api/events?limit=200`, a documented public API described by the provider as a human-verified catalogue. Responses are cached for 60 seconds. The API's `meta.generatedAt` and each event's `lastVerifiedAt` are surfaced in the dashboard. New events published to this catalogue appear automatically.
+
+Hackalendar primarily covers Europe, with some online/global listings, so it is not a comprehensive global source. The browser checks for updates every 60 seconds and on tab focus, but upstream snapshots and server caches mean this is not real-time.
+
+## Filters and limits
+
+The dashboard includes solo-eligible, low-effort, cash-prize, and low/no-cash filters, plus separate **Swag & Gifts**, deadlines, and registration-information views. A filter or badge appears only when source data provides evidence: solo eligibility needs explicit solo/individual language or a team range beginning at one; low effort needs explicit beginner/easy/few-hours/mini-challenge/no-code language; cash needs a numeric prize plus explicit cash wording. Unknown and in-kind rewards are included in the low/no-cash view. Confirm dates and eligibility on the organizer's page.
+
+Neither feed provides a dedicated swag catalogue, so the Swag & Gifts view only shows events whose source text explicitly mentions swag, gifts, or merchandise; otherwise it explains the limitation. This discovery app does not retain registration status or include the old ScamShield AI Plan. Registration Info explains that applications happen on organizer websites. The ScamShield page explains that the discovery sources do not provide plan data.
 
 ## Run locally
 
 1. Install dependencies with `npm install`.
-2. Set an API key or service account credentials in `.env.local` as described above.
+2. The default feeds work without configuration. Optionally set `BRABBLE_API_KEY` in `.env.local` for Brabble's structured API.
 3. Run `npm run dev` and open the local URL printed by Next.js.
