@@ -14,3 +14,26 @@
 .dark .pills button.filter-active{background:#644eff;color:#fff}
 .load-more{display:block;margin:14px auto 0;padding:10px 18px;border:1px solid rgba(87,83,136,.18);border-radius:10px;background:rgba(255,255,255,.75);color:var(--ink);font-size:11px;font-weight:700;cursor:pointer}
 .dark .load-more{background:rgba(47,48,77,.8);color:var(--ink)}
+
+/* Keep event cards readable and fully actionable on narrow phone screens. */
+@media(max-width:560px){
+ .hack-card{grid-template-columns:minmax(0,1fr)}
+ .cover{height:76px;min-height:76px;display:flex;align-items:flex-start}
+ .cover .badge{display:inline-flex;width:max-content;margin-bottom:0}
+ .card-content{min-width:0;padding:11px}
+ .card-content h3{white-space:normal;overflow-wrap:anywhere;line-height:1.25}
+ .card-content>small{display:block;line-height:1.4;overflow-wrap:anywhere}
+ .card-content p{height:auto;min-height:0;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:3;overflow:hidden;margin:6px 0}
+ .tags{flex-wrap:wrap;min-height:0}
+ .tags span{font-size:9px}
+ .card-metrics{flex-wrap:wrap;justify-content:flex-start;gap:6px 12px;line-height:1.35}
+ .card-metrics span{min-width:0;overflow-wrap:anywhere}
+ .card-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}
+ .card-actions .cta{min-width:0;white-space:normal;text-align:center;line-height:1.25}
+ .mobile-nav{height:calc(60px + env(safe-area-inset-bottom));padding-bottom:env(safe-area-inset-bottom)}
+ .center-column{padding-bottom:calc(65px + env(safe-area-inset-bottom))}
+ .topbar{min-width:0}
+ .searchbox{min-width:0}
+ .searchbox input{min-width:0}
+ .menu-button,.icon-button,.avatar{flex-shrink:0}
+}
