@@ -63,7 +63,7 @@ async function getBrabble(): Promise<{ rows: Hackathon[]; status: SourceStatus }
         const organizer = description.split(/\s+·\s+via\s+/i)[0] ?? '';
         const platform = description.match(/\bvia\s+([^·]+)/i)?.[1]?.trim() ?? '';
         const venue = description.match(/In person:\s*([^·]+)/i)?.[1]?.trim() ?? '';
-        return [toRow({ title, description, shareUrl: url, url, deadline: tag(item, 'pubDate'), organiser: organizer, platform, prizeLabel: prize, mode: /online/i.test(description) ? 'ONLINE' : venue ? 'OFFLINE' : '', city: venue }, id, 'Brabble RSS')];
+        return [toRow({ title, description, shareUrl: url, url, publishedAt: tag(item, 'pubDate'), organiser: organizer, platform, prizeLabel: prize, mode: /online/i.test(description) ? 'ONLINE' : venue ? 'OFFLINE' : '', city: venue }, id, 'Brabble RSS')];
       });
       const refreshedAt = unescapeXml(xml.match(/<lastBuildDate>([\s\S]*?)<\/lastBuildDate>/i)?.[1] ?? '') || null;
       return { rows, status: { status: 'available', refreshedAt, origin: 'RSS', count: rows.length, error: null, attribution: 'Listings from Brabble.ai; reuse requires credit and a link.' } };
