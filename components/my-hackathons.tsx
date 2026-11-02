@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { ArrowLeft, Award, CalendarDays, ExternalLink, FileCheck2, FolderKanban, Plus, Sparkles, Target, Trophy, Trash2, type LucideIcon } from 'lucide-react';
 import { HackathonStatus, statusLabels, TrackedHackathon, TrackerActivity, TrackerResponse, trackerStatuses } from '@/lib/my-hackathons';
 import AuthMenu from '@/components/auth-menu';
+import GmailImport from '@/components/gmail-import';
 
 const statusOrder: HackathonStatus[] = trackerStatuses;
 type TrackerAction =
@@ -117,6 +118,7 @@ export default function MyHackathons() {
 
       <div className="my-tracker-local-note">Your tracker is saved to your Google account and is private to you.</div>
       {error && <div className="my-tracker-error" role="alert">{error}</div>}
+      <GmailImport onImported={refresh}/>
 
       {showAdd && <form className="my-tracker-add-form" onSubmit={addManual}>
         <div className="my-tracker-form-heading"><div><b>Add a hackathon</b><small>Keep a record even if it is not in the discovery feed.</small></div></div>
