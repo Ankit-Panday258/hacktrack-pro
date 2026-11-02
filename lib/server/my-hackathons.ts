@@ -1,8 +1,7 @@
 import { neon } from '@neondatabase/serverless';
-import { NextRequest, NextResponse } from 'next/server';
 import { HackathonStatus, statusLabels, TrackedHackathon, TrackerActivity, TrackerResponse } from '@/lib/my-hackathons';
 
-const OWNER_COOKIE = 'hacktrack_guest';
+export const LEGACY_OWNER_COOKIE = 'hacktrack_guest';
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const validStatuses = new Set<HackathonStatus>(['saved', 'registered', 'participating', 'submitted', 'awaiting_results', 'won', 'lost']);
 let database: ReturnType<typeof neon> | undefined;
@@ -54,20 +53,32 @@ export function ensureTrackerSchema(sql: ReturnType<typeof neon>) {
   return schemaReady;
 }
 
-export function getOwnerId(request: NextRequest) {
-  const existing = request.cookies.get(OWNER_COOKIE)?.value || '';
-  return { ownerId: uuidPattern.test(existing) ? existing : crypto.randomUUID(), needsCookie: !uuidPattern.test(existing) };
+export function isTrackerOwnerId(value: string) {
+  return uuidPattern.test(value);
 }
 
-export function withOwnerCookie(response: NextResponse, ownerId: string, needsCookie: boolean) {
-  if (needsCookie) response.cookies.set(OWNER_COOKIE, ownerId, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
-    path: '/',
-    maxAge: 60 * 60 * 24 * 365,
-  });
-  return response;
+export async function claimGuestRecords(sql: ReturnType<typeof neon>, guestOwnerId: string, userOwnerId: string) {
+  if (!uuidPattern.test(guestOwnerId) || !uuidPattern.test(userOwnerId) || guestOwnerId === userOwnerId) return;
+
+  await sql`UPDATE hacktrack_records AS account_record SET
+    organizer = COALESCE(NULLIF(account_record.organizer, ''), guest_record.organizer),
+    url = COALESCE(NULLIF(account_record.url, ''), guest_record.url),
+    deadline = COALESCE(NULLIF(account_record.deadline, ''), guest_record.deadline),
+    prize = COALESCE(NULLIF(account_record.prize, ''), guest_record.prize),
+    project_name = COALESCE(NULLIF(account_record.project_name, ''), guest_record.project_name),
+    project_url = COALESCE(NULLIF(account_record.project_url, ''), guest_record.project_url),
+    result_notes = COALESCE(NULLIF(account_record.result_notes, ''), guest_record.result_notes),
+    prize_received = COALESCE(NULLIF(account_record.prize_received, ''), guest_record.prize_received),
+    certificate_url = COALESCE(NULLIF(account_record.certificate_url, ''), guest_record.certificate_url),
+    updated_at = GREATEST(account_record.updated_at, guest_record.updated_at)
+    FROM hacktrack_records AS guest_record
+    WHERE guest_record.owner_id = ${guestOwnerId} AND account_record.owner_id = ${userOwnerId}
+      AND guest_record.source_id <> '' AND account_record.source_id = guest_record.source_id`;
+  await sql`DELETE FROM hacktrack_records AS guest_record USING hacktrack_records AS account_record
+    WHERE guest_record.owner_id = ${guestOwnerId} AND account_record.owner_id = ${userOwnerId}
+      AND guest_record.source_id <> '' AND account_record.source_id = guest_record.source_id`;
+  await sql`UPDATE hacktrack_records SET owner_id = ${userOwnerId} WHERE owner_id = ${guestOwnerId}`;
+  await sql`UPDATE hacktrack_activity SET owner_id = ${userOwnerId} WHERE owner_id = ${guestOwnerId}`;
 }
 
 export function cleanText(value: unknown, maxLength = 2000) {

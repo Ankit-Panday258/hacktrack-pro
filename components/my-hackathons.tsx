@@ -4,6 +4,7 @@ import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, Award, CalendarDays, ExternalLink, FileCheck2, FolderKanban, Plus, Sparkles, Target, Trophy, Trash2, type LucideIcon } from 'lucide-react';
 import { HackathonStatus, statusLabels, TrackedHackathon, TrackerActivity, TrackerResponse, trackerStatuses } from '@/lib/my-hackathons';
+import AuthMenu from '@/components/auth-menu';
 
 const statusOrder: HackathonStatus[] = trackerStatuses;
 type TrackerAction =
@@ -105,7 +106,7 @@ export default function MyHackathons() {
   return <div className="my-tracker-page">
     <header className="my-tracker-topbar">
       <Link href="/" className="my-tracker-brand"><span className="my-tracker-logo">H</span><span><b>HackTrack Pro</b><small>Personal Hackathon Command Center</small></span></Link>
-      <nav aria-label="Main navigation"><Link href="/">Discover</Link><Link href="/my-hackathons" className="selected">My Hackathons</Link></nav>
+      <nav aria-label="Main navigation"><Link href="/">Discover</Link><Link href="/my-hackathons" className="selected">My Hackathons</Link></nav><AuthMenu/>
     </header>
     <main className="my-tracker-main">
       <Link href="/" className="my-tracker-back"><ArrowLeft size={15}/> Back to discovery</Link>
@@ -114,7 +115,7 @@ export default function MyHackathons() {
         <button className="my-tracker-add-button" onClick={() => setShowAdd(value => !value)}><Plus size={17}/>{showAdd ? 'Close form' : 'Add a hackathon'}</button>
       </section>
 
-      <div className="my-tracker-local-note">Cloud-saved for this browser session. Google sign-in and cross-device account linking are the next phase.</div>
+      <div className="my-tracker-local-note">Your tracker is saved to your Google account and is private to you.</div>
       {error && <div className="my-tracker-error" role="alert">{error}</div>}
 
       {showAdd && <form className="my-tracker-add-form" onSubmit={addManual}>
@@ -164,7 +165,7 @@ export default function MyHackathons() {
           <section className="my-tracker-tip"><Trophy size={19}/><b>Record every milestone</b><p>Update a hackathon as you register, participate, submit a project and receive your results.</p></section>
         </aside>
       </div>
-      <footer className="my-tracker-footer">Your records live in the cloud under a private anonymous browser session. Sign in later to link records across devices.</footer>
+      <footer className="my-tracker-footer">Your hackathon records are stored in the cloud and scoped to your signed-in account.</footer>
     </main>
   </div>;
 }

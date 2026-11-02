@@ -1,41 +1,70 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { HackathonStatus, TrackedHackathon } from '@/lib/my-hackathons';
+import { getAuthSession } from '@/lib/server/auth-session';
 import {
-  appendActivity, cleanText, cleanUrl, ensureTrackerSchema, getOwnerId, getTrackerDatabase,
-  isHackathonStatus, loadTracker, statusActivity, TrackerUnavailableError, withOwnerCookie,
+  appendActivity, claimGuestRecords, cleanText, cleanUrl, ensureTrackerSchema, getTrackerDatabase,
+  isHackathonStatus, isTrackerOwnerId, LEGACY_OWNER_COOKIE, loadTracker, statusActivity, TrackerUnavailableError,
 } from '@/lib/server/my-hackathons';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
 
 function failure(error: unknown) {
-  if (error instanceof TrackerUnavailableError) return NextResponse.json({ records: [], activity: [], error: error.message }, { status: 503 });
-  return NextResponse.json({ records: [], activity: [], error: 'Cloud tracker is temporarily unavailable. Please try again.' }, { status: 503 });
+  if (error instanceof TrackerUnavailableError) return NextResponse.json({ error: error.message }, { status: 503 });
+  return NextResponse.json({ error: 'Cloud tracker is temporarily unavailable. Please try again.' }, { status: 503 });
+}
+
+function signedOut() {
+  return NextResponse.json({ records: [], activity: [], error: 'Please sign in with Google to save and manage your hackathons.' }, {
+    status: 401,
+    headers: { 'Cache-Control': 'private, no-store' },
+  });
+}
+
+function trackerResponse(result: { records: TrackedHackathon[]; activity: import('@/lib/my-hackathons').TrackerActivity[] }, clearLegacyCookie: boolean) {
+  const response = NextResponse.json(result, { headers: { 'Cache-Control': 'private, no-store' } });
+  if (clearLegacyCookie) response.cookies.delete(LEGACY_OWNER_COOKIE);
+  return response;
+}
+
+async function migrateGuestRecords(request: NextRequest, sql: ReturnType<typeof getTrackerDatabase>, ownerId: string) {
+  const guestOwnerId = request.cookies.get(LEGACY_OWNER_COOKIE)?.value || '';
+  if (guestOwnerId && guestOwnerId !== ownerId) await claimGuestRecords(sql, guestOwnerId, ownerId);
+  return Boolean(guestOwnerId);
 }
 
 export async function GET(request: NextRequest) {
-  const { ownerId, needsCookie } = getOwnerId(request);
   try {
+    const session = await getAuthSession(request.headers);
+    if (!session) return signedOut();
+    const ownerId = session.user.id;
+    if (!isTrackerOwnerId(ownerId)) return failure(new Error('Unexpected account identifier format.'));
+
     const sql = getTrackerDatabase();
     await ensureTrackerSchema(sql);
-    const result = await loadTracker(sql, ownerId);
-    return withOwnerCookie(NextResponse.json(result, { headers: { 'Cache-Control': 'private, no-store' } }), ownerId, needsCookie);
+    const clearLegacyCookie = await migrateGuestRecords(request, sql, ownerId);
+    return trackerResponse(await loadTracker(sql, ownerId), clearLegacyCookie);
   } catch (error) {
-    return withOwnerCookie(failure(error), ownerId, needsCookie);
+    return failure(error);
   }
 }
 
 export async function POST(request: NextRequest) {
-  const { ownerId, needsCookie } = getOwnerId(request);
   try {
+    const session = await getAuthSession(request.headers);
+    if (!session) return signedOut();
+    const ownerId = session.user.id;
+    if (!isTrackerOwnerId(ownerId)) return failure(new Error('Unexpected account identifier format.'));
+
     const body = await request.json() as { action?: string; record?: Partial<TrackedHackathon>; recordId?: string; patch?: Partial<TrackedHackathon> };
     const sql = getTrackerDatabase();
     await ensureTrackerSchema(sql);
+    const clearLegacyCookie = await migrateGuestRecords(request, sql, ownerId);
 
     if (body.action === 'add') {
       const input = body.record || {};
       const title = cleanText(input.title, 240);
-      if (!title) return withOwnerCookie(NextResponse.json({ records: [], activity: [], error: 'Hackathon name is required.' }, { status: 400 }), ownerId, needsCookie);
+      if (!title) return NextResponse.json({ records: [], activity: [], error: 'Hackathon name is required.' }, { status: 400 });
       const sourceId = cleanText(input.sourceId, 400);
       const id = crypto.randomUUID();
       const inserted = await sql`INSERT INTO hacktrack_records (id, owner_id, source_id, title, organizer, url, deadline, prize, status)
@@ -56,21 +85,20 @@ export async function POST(request: NextRequest) {
         result_notes = COALESCE(${resultNotes}, result_notes), prize_received = COALESCE(${prizeReceived}, prize_received),
         certificate_url = COALESCE(${certificateUrl}, certificate_url), updated_at = now()
         WHERE id = ${recordId} AND owner_id = ${ownerId} RETURNING id::text AS id, title, status` as unknown as { id: string; title: string; status: HackathonStatus }[];
-      if (!updated.length) return withOwnerCookie(NextResponse.json({ records: [], activity: [], error: 'Hackathon record was not found.' }, { status: 404 }), ownerId, needsCookie);
+      if (!updated.length) return NextResponse.json({ records: [], activity: [], error: 'Hackathon record was not found.' }, { status: 404 });
       const updatedRecord = updated[0];
       await appendActivity(sql, ownerId, updatedRecord.id, updatedRecord.title, status ? statusActivity(status) : 'Updated project or reward details');
     } else if (body.action === 'delete') {
       const recordId = cleanText(body.recordId, 50);
       const removed = await sql`DELETE FROM hacktrack_records WHERE id = ${recordId} AND owner_id = ${ownerId} RETURNING id::text AS id, title` as unknown as { id: string; title: string }[];
-      if (!removed.length) return withOwnerCookie(NextResponse.json({ records: [], activity: [], error: 'Hackathon record was not found.' }, { status: 404 }), ownerId, needsCookie);
+      if (!removed.length) return NextResponse.json({ records: [], activity: [], error: 'Hackathon record was not found.' }, { status: 404 });
       await appendActivity(sql, ownerId, removed[0].id, removed[0].title, 'Removed from your tracker');
     } else {
-      return withOwnerCookie(NextResponse.json({ records: [], activity: [], error: 'Unsupported tracker action.' }, { status: 400 }), ownerId, needsCookie);
+      return NextResponse.json({ records: [], activity: [], error: 'Unsupported tracker action.' }, { status: 400 });
     }
 
-    const result = await loadTracker(sql, ownerId);
-    return withOwnerCookie(NextResponse.json(result, { headers: { 'Cache-Control': 'private, no-store' } }), ownerId, needsCookie);
+    return trackerResponse(await loadTracker(sql, ownerId), clearLegacyCookie);
   } catch (error) {
-    return withOwnerCookie(failure(error), ownerId, needsCookie);
+    return failure(error);
   }
 }
