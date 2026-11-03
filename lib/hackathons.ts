@@ -19,6 +19,56 @@ const toRow = (value: Record<string, unknown>, id: string, source: string): Hack
 });
 const eventName = (row: Hackathon) => (row.name || row.title || '').toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
+const indianCityNames = [
+  'ahmedabad', 'amritsar', 'bengaluru', 'bangalore', 'bhopal', 'bhubaneswar', 'chandigarh', 'chennai', 'coimbatore',
+  'cochin', 'ernakulam', 'faridabad', 'ghaziabad', 'goa', 'gurgaon', 'gurugram', 'guwahati', 'hyderabad', 'indore',
+  'jaipur', 'jodhpur', 'kanpur', 'kochi', 'kolkata', 'lucknow', 'ludhiana', 'madurai', 'mangaluru', 'mangalore',
+  'mumbai', 'mysore', 'mysuru', 'nagpur', 'nashik', 'new delhi', 'noida', 'patna', 'pune', 'raipur', 'ranchi',
+  'surat', 'thiruvananthapuram', 'trivandrum', 'vadodara', 'varanasi', 'visakhapatnam', 'vizag',
+];
+
+function indiaLocation(row: Hackathon) {
+  const countryCode = (row.countryCode || row.country || '').trim().toLowerCase();
+  if (countryCode === 'in' || countryCode === 'ind' || countryCode === 'india') return true;
+
+  const location = Object.entries(row)
+    .filter(([key]) => /^(country|countrycode|city|citylabel|venue|location|address|place)$/i.test(key))
+    .map(([, value]) => value)
+    .join(' ')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ');
+  if (/\b(?:india|bharat)\b/.test(location)) return true;
+  return indianCityNames.some(city => ` ${location} `.includes(` ${city} `));
+}
+
+function isExplicitlyIndiaIneligible(row: Hackathon) {
+  const eligibility = Object.entries(row)
+    .filter(([key]) => /eligib|who.?can|participant|residen|citizen|nationality|participation.?region|country.?restriction|open.?to/i.test(key))
+    .map(([, value]) => value)
+    .join(' ');
+  if (!eligibility.trim()) return false;
+
+  if (/\b(?:not eligible|cannot|can't|excluded|not open|not allowed|ineligible)\b.{0,100}\b(?:india|indian)\b|\b(?:india|indian)\b.{0,100}\b(?:not eligible|cannot participate|not allowed|excluded|ineligible)\b/i.test(eligibility)) return true;
+
+  const clearlyOpenToIndia = /\b(?:india|indian|worldwide|global|international|any country|all countries|open to all)\b/i.test(eligibility);
+  const countryLimited = /\b(?:only|exclusively|restricted|limited to|residents?|citizens?|nationals?|based in|located in|enrolled in|from|for)\b/i.test(eligibility);
+  const nonIndiaCountry = /\b(?:u\.?s\.?a?\.?|united states|canada|canadian|mexico|brazil|argentina|united kingdom|\buk\b|british|europe|european union|\beu\b|australia|australian|new zealand|singapore|japan|south korea|korea|china|chinese|nigeria|kenya|south africa|north america|latin america)\b/i.test(eligibility);
+  return !clearlyOpenToIndia && countryLimited && nonIndiaCountry;
+}
+
+function explicitlyOnline(row: Hackathon) {
+  const mode = Object.entries(row)
+    .filter(([key]) => /^(mode|format|deliverymode|eventmode|attendancetype)$/i.test(key))
+    .map(([, value]) => value)
+    .join(' ');
+  return /\b(?:online|virtual|remote|hybrid|digital)\b/i.test(mode);
+}
+
+function isAvailableToIndianParticipants(row: Hackathon) {
+  if (isExplicitlyIndiaIneligible(row)) return false;
+  return indiaLocation(row) || explicitlyOnline(row);
+}
+
 async function getHackalendar() {
   try {
     const response = await fetch('https://hackalendar.com/api/events?limit=200', { next: { revalidate: 60 } });
@@ -99,7 +149,7 @@ async function getBrabble(): Promise<{ rows: Hackathon[]; status: SourceStatus }
 export async function getHackathonData() {
   const [hackalendar, brabble] = await Promise.all([getHackalendar(), getBrabble()]);
   const seen = new Set<string>();
-  const rows = [...brabble.rows, ...hackalendar.rows].filter(row => {
+  const rows = [...brabble.rows, ...hackalendar.rows].filter(isAvailableToIndianParticipants).filter(row => {
     const key = eventName(row) || row._id;
     if (seen.has(key)) return false;
     seen.add(key);
